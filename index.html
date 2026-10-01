@@ -800,6 +800,7 @@
           <span>Set all to</span>
           <select id="lvlBulk"><option value="">—</option><option>L1</option><option>L2</option><option>L3</option><option>L4</option><option value="-">Unassigned</option></select>
           <button class="btn small" id="lvlBulkApply" type="button">Apply</button>
+          <button class="btn small" id="lvlReset" type="button" title="Levels from the Ticket Reference workbook">↺ Reset to database levels</button>
         </div>
         <div id="lvlTableWrap"></div>
         <div style="margin-top:12px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
@@ -1962,7 +1963,7 @@ async function refreshRoster(){
     hQuests.forEach(q=>{
       const sc = q.att ? q.att.scenarioTitle : ((findHackScenario(q.a && q.a.scenarioId) || {}).title || '');
       const lv = questLevel(q.att ? q.att.scenarioId : (q.a && q.a.scenarioId));
-      inner.appendChild(el('div','detail-head',`${slotLevel(q.slot)} Ticket Quest${sc ? ' — ' + sc : ''}`));
+      inner.appendChild(el('div','detail-head',`${slotLevel(q.slot)} Ticket Quest${questPriority(q.att ? q.att.scenarioId : (q.a && q.a.scenarioId)) ? ' · ' + questPriority(q.att ? q.att.scenarioId : (q.a && q.a.scenarioId)) : ''}${sc ? ' — ' + sc : ''}`));
       if(q.att) inner.appendChild(renderHackathonDetail(q.att));
       else inner.appendChild(el('div','empty-note', q.a && q.a.enabled
         ? `Assigned (${q.state.toLowerCase()}) — ${fmtHackDate(q.a.fromDate)} to ${fmtHackDate(q.a.toDate)}. No submission yet.`
@@ -2420,8 +2421,26 @@ const RAW_PROBLEMS = [
 
 ];
 
+/* ================================================================
+   TICKET MASTER — priority and level of each of the 19 tickets, as defined in
+   Ticket_Quest_Participant_Assignments_Balanced.xlsx (tab "Ticket Reference").
+     L1 Simple · L2 Simple-Medium · L3 Medium-Complex · L4 Complex
+   Practice scenarios carry their INC number, so they map directly. Ticket Quest
+   scenarios map through HACK_TICKET. hack-avail (customer-facing intermittent
+   errors, infrastructure healthy) matches none of the 19 tickets and is left unmapped.
+   ================================================================ */
+const TICKET_MASTER = {1:{inc:'INC000101',pri:'P2',lvl:'L2'},2:{inc:'INC000102',pri:'P1',lvl:'L3'},3:{inc:'INC000103',pri:'P2',lvl:'L1'},4:{inc:'INC000104',pri:'P2',lvl:'L1'},5:{inc:'INC000105',pri:'P1',lvl:'L3'},6:{inc:'INC000106',pri:'P3',lvl:'L3'},7:{inc:'INC000107',pri:'P2',lvl:'L3'},8:{inc:'INC000108',pri:'P3',lvl:'L3'},9:{inc:'INC000109',pri:'P3',lvl:'L4'},10:{inc:'INC000110',pri:'P2',lvl:'L3'},11:{inc:'INC000111',pri:'P1',lvl:'L2'},12:{inc:'INC000112',pri:'P2',lvl:'L4'},13:{inc:'INC000113',pri:'P2',lvl:'L2'},14:{inc:'INC000114',pri:'P1',lvl:'L4'},15:{inc:'INC000115',pri:'P3',lvl:'L1'},16:{inc:'INC000116',pri:'P2',lvl:'L4'},17:{inc:'INC000117',pri:'P2',lvl:'L2'},18:{inc:'INC000118',pri:'P1',lvl:'L3'},19:{inc:'INC000119',pri:'P1',lvl:'L2'}};
+const TICKET_BY_INC = {}; Object.keys(TICKET_MASTER).forEach(n=>{ TICKET_BY_INC[TICKET_MASTER[n].inc] = TICKET_MASTER[n]; });
+const HACK_TICKET = {
+  'hack-disk':1,'hack-cpu':2,'hack-pwd':3,'hack-user':4,'hack-backup':5,'hack-shutdown':6,'hack-policy':7,'hack-patch':8,
+  'hack-build':9,'hack-decomm':10,'hack-diskinc':11,'hack-restore':12,'hack-ip':13,'hack-hw':14,'hack-alert':15,
+  'hack-dc':16,'hack-ups':17,'hack-port':18,'hack-rdp':19
+};
+
 const PROBLEMS = RAW_PROBLEMS.map(p=>{
   const withIds = (arr, kind) => arr.map((c,i)=>({...c, id:`${p.id}-${kind}${i}`, kind}));
+  const tm = TICKET_BY_INC[p.ticket];                       // priority comes from the ticket master
+  if(tm){ p = { ...p, sev: tm.pri, title: p.title.replace(/^\[P\d\]/, `[${tm.pri}]`) }; }
   return { ...p, pre: withIds(p.pre,'pre'), resolve: withIds(p.resolve,'resolve'), escalate: withIds(p.escalate,'escalate') };
 });
 const CARD_INDEX = {};
@@ -3762,7 +3781,7 @@ async function openHackathonConfig(key, rec){
                                 : `<option value="">No scenario is tagged ${lvl} yet</option>`;
     pool.forEach(sc=>{
       const o = document.createElement('option');
-      o.value = sc.id; o.textContent = sc.title;
+      o.value = sc.id; o.textContent = (questPriority(sc.id) ? `[${questPriority(sc.id)}] ` : '') + sc.title;
       sel.appendChild(o);
     });
     const cur = a.scenarioId || (att ? att.scenarioId : '');
@@ -4070,7 +4089,7 @@ async function downloadHackathonSummary(){
     done.forEach((x,i)=>{ rank[rk(x)] = (i > 0 && x.last.percentage === done[i-1].last.percentage) ? rank[rk(done[i-1])] : i+1; });
     const ordered = [...done, ...list.filter(x=> !x.last).sort((a,b)=> a.p.name.localeCompare(b.p.name) || (a.slot||0)-(b.slot||0))];
 
-    const header = ['Rank','Participant','Employee ID','Ticket Quest level','Ticket Quest status','Scenario','Scenario level','Window from','Window to',
+    const header = ['Rank','Participant','Employee ID','Ticket Quest level','Ticket Quest status','Scenario','Scenario level','Scenario priority','Window from','Window to',
       'Start time','End time (submitted)','Time limit (min)','Time taken (mm:ss)','Minutes taken','Speed rank (in level)','Timed out','Score','Maximum','Percentage','Correct','Misplaced','Missing','Incorrect (distractors)','Attempts'];
     const tm = {};
     const pByKey = {}, aByKey = {};
@@ -4082,7 +4101,7 @@ async function downloadHackathonSummary(){
       const scen = a ? a.scenarioTitle : (findHackScenario(h.scenarioId) || {}).title || '';
       const n = r=> a ? a.breakdown.filter(b=> b.result === r).length : '';
       return [a ? rank[x.key + '|' + x.slot] : '', x.p.name, x.p.empId || '', slotLevel(x.slot), HACK_STATUS_LABEL[x.state] || x.state, scen,
-        questLevel(a ? a.scenarioId : h.scenarioId) || 'Unassigned', xlDay(h.fromDate), xlDay(h.toDate), a ? fmtDT(a.startedAt || (tm[x.key + '|' + x.slot] || {}).startTs) : '', a ? fmtDT(a.ts) : '',
+        questLevel(a ? a.scenarioId : h.scenarioId) || 'Unassigned', questPriority(a ? a.scenarioId : h.scenarioId), xlDay(h.fromDate), xlDay(h.toDate), a ? fmtDT(a.startedAt || (tm[x.key + '|' + x.slot] || {}).startTs) : '', a ? fmtDT(a.ts) : '',
         a && a.timeLimitMin ? a.timeLimitMin : '', attemptSecs(a) != null ? fmtClock(attemptSecs(a)*1000) : '', a ? mins2(attemptSecs(a)) : '',
         (tm[x.key + '|' + x.slot] || {}).rank || '', a ? (a.timedOut ? 'Yes' : (a.timeLimitMin ? 'No' : '')) : '',
         a ? a.earned : '', a ? a.maximum : '', a ? a.percentage + '%' : '',
@@ -4101,7 +4120,7 @@ async function downloadHackathonDetail(){
       .sort((a,b)=> a.p.name.localeCompare(b.p.name));
     if(!list.length){ showToast('No Ticket Quest submissions to export yet'); return; }
 
-    const header = ['Participant','Employee ID','Ticket Quest level','Scenario','Scenario level','Attempt','Submitted at','Total score','Maximum','Percentage',
+    const header = ['Participant','Employee ID','Ticket Quest level','Scenario','Scenario level','Scenario priority','Attempt','Submitted at','Total score','Maximum','Percentage',
       'Row type','Section','Expected position','Placed at','Step','Importance','Weight','Result','Points','Calculation'];
     const rows = [];
     list.forEach(x=>{
@@ -4110,7 +4129,7 @@ async function downloadHackathonDetail(){
         const steps = S ? hackSteps(S) : [];
         const resp = a.response || [];
         const where = id=>{ const r = resp.find(q=> q.placedCardId === id); return r ? slotName(r.kind, r.index) : 'Not placed'; };
-        const base = [x.p.name, x.p.empId || '', slotLevel(x.slot), a.scenarioTitle, questLevel(a.scenarioId) || 'Unassigned', a.attemptNo || 1, xlDate(a.ts), a.earned, a.maximum, a.percentage + '%'];
+        const base = [x.p.name, x.p.empId || '', slotLevel(x.slot), a.scenarioTitle, questLevel(a.scenarioId) || 'Unassigned', questPriority(a.scenarioId), a.attemptNo || 1, xlDate(a.ts), a.earned, a.maximum, a.percentage + '%'];
         a.breakdown.forEach((b,i)=>{
           const st = steps[i] && steps[i].label === b.label ? steps[i] : null;
           const expected = st ? (st.kind === 'escalate' ? 'Escalate (any position)' : slotName(st.kind, st.index)) : (HACK_SECTION_LABEL[b.section] || b.section);
@@ -4254,11 +4273,23 @@ document.getElementById('dlHackDetailBtn').addEventListener('click', downloadHac
    do not change scoring, access or the answer key.
    ================================================================ */
 const LEVELS = ['L1','L2','L3','L4'];
-let LEVELS_CFG = { practice:{}, quest:{} };
+function defaultLevels(){
+  const d = { practice:{}, quest:{} };
+  PROBLEMS.forEach(p=>{ const t = TICKET_BY_INC[p.ticket]; if(t) d.practice[p.id] = t.lvl; });
+  Object.keys(HACK_TICKET).forEach(id=>{ d.quest[id] = TICKET_MASTER[HACK_TICKET[id]].lvl; });
+  return d;
+}
+/* Until an employee saves their own levels, the database (workbook) levels apply. */
+let LEVELS_CFG = defaultLevels();
+function scenarioInfo(set, id){
+  const t = set === 'practice' ? TICKET_BY_INC[(PROBLEMS.find(x=>x.id===id)||{}).ticket] : TICKET_MASTER[HACK_TICKET[id]];
+  return t ? {inc:t.inc, pri:t.pri, lvl:t.lvl} : null;
+}
+function questPriority(id){ const i = scenarioInfo('quest', id); return i ? i.pri : ''; }
 async function loadLevels(){
   try{
     const r = await rowGet('cfg:levels');
-    LEVELS_CFG = { practice:(r && r.practice) || {}, quest:(r && r.quest) || {} };
+    LEVELS_CFG = r ? { practice:r.practice || {}, quest:r.quest || {} } : defaultLevels();
   }catch(e){ console.error(e); }
 }
 function levelOf(set, id){ const v = (LEVELS_CFG[set]||{})[id]; return LEVELS.includes(v) ? v : ''; }
@@ -4290,11 +4321,13 @@ function renderLevelsTable(){
     const saved = levelOf(lvlSet, x.id);
     const opts = `<option value=""${cur?'':' selected'}>Unassigned</option>` +
       LEVELS.map(l=>`<option${cur===l?' selected':''}>${l}</option>`).join('');
+    const inf = scenarioInfo(lvlSet, x.id);
     return `<tr data-id="${escapeHtml(x.id)}" class="${cur!==saved?'dirty':''}"><td>${i+1}</td><td>${escapeHtml(x.title)}</td>
+      <td>${inf ? escapeHtml(inf.inc) : '—'}</td><td>${inf ? inf.pri : '—'}</td>
       <td><select aria-label="Level for ${escapeHtml(x.title)}">${opts}</select></td></tr>`;
   }).join('');
   const wrap = document.getElementById('lvlTableWrap');
-  wrap.innerHTML = `<table class="lvl-table"><thead><tr><th>#</th><th>Scenario</th><th>Level</th></tr></thead><tbody>${rows}</tbody></table>`;
+  wrap.innerHTML = `<table class="lvl-table"><thead><tr><th>#</th><th>Scenario</th><th>Ticket</th><th>Priority</th><th>Level</th></tr></thead><tbody>${rows}</tbody></table>`;
   wrap.querySelectorAll('tbody tr').forEach(tr=>{
     tr.querySelector('select').addEventListener('change', e=>{
       const v = e.target.value;
@@ -4327,6 +4360,11 @@ async function saveLevels(){
 document.getElementById('lvlTabPractice').addEventListener('click', ()=>{ lvlSet='practice'; renderLevelsTable(); });
 document.getElementById('lvlTabQuest').addEventListener('click', ()=>{ lvlSet='quest'; renderLevelsTable(); });
 document.getElementById('lvlSaveBtn').addEventListener('click', saveLevels);
+document.getElementById('lvlReset').addEventListener('click', ()=>{
+  const d = defaultLevels();
+  lvlDraft[lvlSet] = Object.assign({}, d[lvlSet]);
+  renderLevelsTable();
+});
 document.getElementById('lvlBulkApply').addEventListener('click', ()=>{
   const v = document.getElementById('lvlBulk').value; if(!v) return;
   lvlList(lvlSet).forEach(x=>{ if(v==='-') delete lvlDraft[lvlSet][x.id]; else lvlDraft[lvlSet][x.id] = v; });

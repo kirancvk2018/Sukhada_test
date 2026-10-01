@@ -439,6 +439,7 @@
   .aa-state{display:inline-block; font-family:var(--mono); font-size:10px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; padding:4px 10px; border-radius:20px;}
   .aa-state.on{background:var(--accent-dim); color:var(--accent2);} .aa-state.off{background:var(--panel-raise); color:var(--text-faint);}
   .aa-warn{font-size:12px; color:#7C4A03; background:var(--amber-dim); border:1px solid var(--amber); border-radius:8px; padding:9px 12px; margin:0 0 12px; line-height:1.55;}
+  .hack-note{margin:10px 0 0; font-size:12px; color:var(--text-dim);}
   .hq-chip{font:inherit; font-size:12px; font-weight:600; padding:7px 13px; border-radius:20px; border:1px solid var(--border); background:var(--panel-alt); color:var(--text-dim); cursor:pointer;}
   .hq-chip.on{border-color:var(--accent); background:var(--accent-dim); color:var(--accent2);}
   .hq-chip.done{color:var(--accent2);}
@@ -887,6 +888,7 @@
           <span>Ticket Quest period <b id="hackWindow"></b></span>
         </div>
         <div class="hack-quests" id="hackQuests" role="tablist" aria-label="Your Ticket Quests"></div>
+        <div class="hack-note" id="hackLockNote" style="display:none;">A Ticket Quest is running. Submit it (or let the time run out) to open your next one.</div>
         <p class="hack-warn">This is an assessment. You get <b>one submission per Ticket Quest</b>, and the correct flow is not shown
           afterwards. Take your time and place every step before you submit.</p>
         <button class="btn small" id="hackScoringDemoBtn" style="margin-top:12px;">🎯 How is my Ticket Quest scored?</button>
@@ -3602,6 +3604,7 @@ let hackSlots = [];
 let hackSubmitted = false;
 
 let hackSlotNo = 1, hackLevel = 'L1', hackQName = '';
+let hackLockSlot = null;      // the Ticket Quest the participant has started and not yet submitted; the others stay closed until it is
 let hackAttemptsAll = [];
 async function enterHackathon(wantSlot){
   showScreen('hackathon');
@@ -3615,7 +3618,13 @@ async function enterHackathon(wantSlot){
 
   hackAttemptsAll = await Store.getHackathonAttempts(session.key);
   const quests = hackQuestList(rec, hackAttemptsAll, new Date());
-  const pick = (wantSlot && quests.find(q=>q.slot===wantSlot && (q.state==='ACTIVE'||q.state==='COMPLETED')))
+  const row = await Store.getHackathonRow(session.key);
+  /* One at a time: a Ticket Quest that has been started and not submitted must be finished before any other can be opened. */
+  const inProg = quests.find(q=> !q.att && q.state === 'ACTIVE' && row && row.starts && row.starts[q.slot]);
+  hackLockSlot = inProg ? inProg.slot : null;
+  if(inProg && wantSlot && wantSlot !== inProg.slot) showToast(`Finish ${qName(inProg)} first — it is already running`);
+  const pick = inProg
+            || (wantSlot && quests.find(q=>q.slot===wantSlot && (q.state==='ACTIVE'||q.state==='COMPLETED')))
             || quests.find(q=>q.state==='ACTIVE')
             || quests.filter(q=>q.state==='COMPLETED').slice(-1)[0] || quests[0] || null;
   hackSlotNo = pick ? pick.slot : 1;
@@ -3640,7 +3649,6 @@ async function enterHackathon(wantSlot){
     document.getElementById('hackDoneMeta').textContent = '';
     return;
   }
-  const row = await Store.getHackathonRow(session.key);
   const startTs = row && row.starts ? row.starts[hackSlotNo] : null;
   if(!startTs){ showHackStartGate(); return; }
   buildHackathonBoard();
@@ -3684,10 +3692,13 @@ function showHackStartGate(){
 }
 document.getElementById('hackStartBtn').addEventListener('click', async ()=>{
   const btn = document.getElementById('hackStartBtn');
+  if(hackLockSlot && hackLockSlot !== hackSlotNo){ showToast('Finish the Ticket Quest that is already running first'); return; }
   btn.disabled = true;
   const ts = await Store.startHackathonTimer(session.key, hackSlotNo);
   btn.disabled = false;
   if(!ts){ showToast('Could not start the timer — check your connection and try again'); return; }
+  hackLockSlot = hackSlotNo;
+  refreshHackBar();
   document.getElementById('hackStart').style.display = 'none';
   buildHackathonBoard();
   runHackTimer(ts);
@@ -3723,17 +3734,19 @@ function renderHackQuestBar(quests){
     const b = el('button','hq-chip' + (q.slot===hackSlotNo ? ' on' : '') + (q.state==='COMPLETED' ? ' done' : ''),
       `${qName(q)} · ${label[q.state] || ''}`);
     b.type = 'button';
-    b.disabled = !(q.state==='ACTIVE' || q.state==='COMPLETED');
+    const locked = hackLockSlot && q.slot !== hackLockSlot;          // another Ticket Quest is running
+    b.disabled = locked || !(q.state==='ACTIVE' || q.state==='COMPLETED');
+    if(locked) b.title = 'Submit the running Ticket Quest first';
     b.addEventListener('click', ()=>{
-      if(q.slot === hackSlotNo) return;
-      const board = document.getElementById('hackBoard');
-      const placed = board.style.display !== 'none' && !hackSubmitted && hackSlots.some(s=>s.el.querySelector('.card'));
-      if(placed && !confirm('Switch Ticket Quest? Cards you have placed on this board will be cleared, and this Ticket Quest\'s timer keeps running.')) return;
+      if(q.slot === hackSlotNo || locked) return;
       enterHackathon(q.slot);
     });
     bar.appendChild(b);
   });
+  const note = document.getElementById('hackLockNote');
+  note.style.display = hackLockSlot && quests.length > 1 ? 'block' : 'none';
 }
+function refreshHackBar(){ renderHackQuestBar(hackQuestList(session.participant || {}, hackAttemptsAll, new Date())); }
 
 function buildHackathonBoard(){
   document.getElementById('hackStart').style.display = 'none';
@@ -3858,7 +3871,8 @@ async function submitHackathonSolution(auto){
     return;
   }
   hackAttemptsAll = hackAttemptsAll.filter(x=> attemptSlot(x) !== attempt.slot).concat([attempt]);
-  renderHackQuestBar(hackQuestList(session.participant || {}, hackAttemptsAll, new Date()));
+  hackLockSlot = null;                                              // finished: the next Ticket Quest can be opened
+  refreshHackBar();
   renderHackathonDone(attempt);
 }
 

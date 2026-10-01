@@ -793,17 +793,17 @@
       </div>
 
       <div class="card-panel" style="margin-bottom:22px;" id="autoPanel">
-        <div class="section-title">Ticket Quest — Auto-assignment from workbook</div>
+        <div class="section-title">Ticket Quest — Workbook auto-assignment</div>
         <p style="font-size:12.5px; color:var(--text-dim); line-height:1.55; margin:0 0 12px;">
-          Gives every participant listed in <b>Ticket_Quest_Participant_Assignments_Balanced.xlsx</b> (tab <i>Participant Assignments</i>) their four
-          tickets. Participants are matched by name. A participant whose Ticket Quests were assigned by hand keeps those instead.
-          Each ticket runs with its own level's timer.
+          The workbook <b>Ticket_Quest_Participant_Assignments_Balanced.xlsx</b> (tab <i>Participant Assignments</i>) holds four tickets for each of
+          76 participants. <b>Switch it on or off per participant</b> in the roster below (the <i>Workbook plan</i> button, or Assign / Edit). The
+          buttons here are only a shortcut to do it for everyone in one go. Each ticket runs on its own level's timer.
         </p>
         <div class="aa-row">
-          <span class="aa-state off" id="aaState">Disabled</span>
           <div class="field"><label style="display:block;font-size:11px;color:var(--text-dim);margin-bottom:3px;">From date</label><input type="date" id="aaFrom"></div>
           <div class="field"><label style="display:block;font-size:11px;color:var(--text-dim);margin-bottom:3px;">To date</label><input type="date" id="aaTo"></div>
-          <button class="btn primary" id="aaToggle" type="button">Enable auto-assignment</button>
+          <button class="btn primary" id="aaEnableAll" type="button">Enable for everyone in the plan</button>
+          <button class="btn danger" id="aaDisableAll" type="button">Disable for everyone</button>
         </div>
         <div class="err" id="aaErr"></div>
         <div id="aaSummary" style="font-size:12.5px; color:var(--text-dim); line-height:1.6;"></div>
@@ -1183,7 +1183,7 @@
 
       <div class="cfg-slots" id="hackCfgSlots"></div>
 
-      <p class="cfg-note">One Ticket Quest per level (L1, L2, L3, L4) per participant, at most 4 in all. Each takes a scenario tagged with that level, and has its own dates. Each window runs from 00:00 on
+      <p class="cfg-note">Hand-made: one Ticket Quest per level (L1, L2, L3, L4) per participant, at most 4 in all. Each takes a scenario tagged with that level, and has its own dates. Each window runs from 00:00 on
         its From date to 23:59 on its To date, in your local time. While any window is open the participant gets Ticket Quest
         instead of normal practice; once every open one is submitted or its To date passes, practice returns. A submitted
         Ticket Quest is locked.</p>
@@ -1697,7 +1697,6 @@ async function participantLogin(){
        an attempt already exists. Because a page refresh returns to this
        login screen, the decision is re-evaluated every time — there is no
        stale session that could be used to slip back into practice mode. */
-    await loadAutoCfg();
     const hackAttempts = await Store.getHackathonAttempts(key);
     const mode = getParticipantMode(rec, hackAttempts, new Date());
     session = {role:'participant', name: rec.name, key, mode, participant: rec};
@@ -1829,7 +1828,6 @@ async function enterEmployee(){
   document.getElementById('newPName').value = '';
   await loadLevels();
   renderLevelsPanel();
-  await loadAutoCfg();
   renderAutoPanel();
   await refreshRoster();
 }
@@ -1907,7 +1905,6 @@ async function refreshRoster(){
   const participants = await Store.listParticipants();
   const attemptsByKey = await Store.listAllAttempts();
   const hackByKey = await Store.listAllHackathonAttempts();
-  await loadAutoCfg();
   const startsByKey = await Store.listAllHackathonStarts();
   const data = { participants, attempts: attemptsByKey, hack: hackByKey, starts: startsByKey };
   renderSpeedPanel(data);
@@ -1962,7 +1959,8 @@ async function refreshRoster(){
       <td class="hack-cell"><div class="hq-cell">${hQuests.length
           ? hQuests.map(q=> `<span>${q.a && q.a.auto ? q.slot + '·' : ''}${q.level}· ${hackBadge(q.state, q.att ? q.att.percentage : null)}</span>`).join('')
           : hackBadge('NOT_ASSIGNED')}</div>
-        <button class="btn small ghost hack-cfg-btn" data-cfg="${escapeHtml(k)}">${hQuests.length ? 'Edit' : 'Assign'}</button></td>
+        <button class="btn small ghost hack-cfg-btn" data-cfg="${escapeHtml(k)}">${hQuests.length ? 'Edit' : 'Assign'}</button>
+        ${inAutoPlan(p) ? `<button class="btn small ${autoState(p) ? 'danger' : ''} hack-plan-btn" data-plan="${escapeHtml(k)}" title="Workbook plan: ${AUTO_PLAN[normKey(p.name)].map(t=>'T'+t).join(', ')}">Plan: ${autoState(p) ? 'On · turn off' : 'Off · turn on'}</button>` : ''}</td>
       <td class="row-actions"><button class="btn small danger" data-del="${escapeHtml(k)}">Remove</button></td>
     `;
     tbody.appendChild(row);
@@ -2016,6 +2014,23 @@ async function refreshRoster(){
       e.stopPropagation();                       // do not toggle the detail row
       const key = btn.getAttribute('data-cfg');
       openHackathonConfig(key, data.participants[key]);
+    });
+  });
+
+  wrap.querySelectorAll('[data-plan]').forEach(btn=>{
+    btn.addEventListener('click', async (e)=>{
+      e.stopPropagation();
+      const key = btn.getAttribute('data-plan'), rec = data.participants[key];
+      if(autoState(rec)){
+        if(!confirm(`Switch the workbook plan OFF for ${rec.name}? Submissions already made are kept.`)) return;
+        await setParticipantAuto(key, false); showToast(`Workbook plan off for ${rec.name}`);
+      } else {
+        const from = document.getElementById('aaFrom').value || (rec.autoAssign && hackDatePart(rec.autoAssign.fromDate)),
+              to = document.getElementById('aaTo').value || (rec.autoAssign && hackDatePart(rec.autoAssign.toDate));
+        if(!from || !to){ showToast('Set the dates first — opening the assignment window'); openHackathonConfig(key, rec); return; }
+        await setParticipantAuto(key, true, from, to); showToast(`Workbook plan on for ${rec.name} (${from} to ${to})`);
+      }
+      await refreshRoster(); renderAutoPanel();
     });
   });
 
@@ -3357,7 +3372,7 @@ function questLimitMs(slot){ return (QUEST_MINUTES[slotLevel(slot)] || 30) * 600
 /* ================================================================
    AUTO-ASSIGNMENT PLAN — from Ticket_Quest_Participant_Assignments_Balanced.xlsx,
    tab "Participant Assignments": [name, ticket, ticket, ticket, ticket].
-   While enabled (cfg:autoassign) a participant in this plan is given those four tickets as four
+   While switched on for that participant (rec.autoAssign) a participant in this plan is given those four tickets as four
    Ticket Quests, in the order listed. They are computed on the fly, nothing is copied into the
    participant record, so Disable takes them away again (submissions already made stay).
    Unlike manual assignment, a plan may hold two tickets of the same level; each runs on its own
@@ -3366,17 +3381,24 @@ function questLimitMs(slot){ return (QUEST_MINUTES[slotLevel(slot)] || 30) * 600
 const AUTO_PLAN_ROWS = [["Abarna M", 14, 4, 6, 11], ["Aditya Ambadgatti", 2, 1, 15, 7], ["Appalabathula Javili", 5, 3, 9, 1], ["Archana K", 14, 7, 8, 11], ["Arulkumar M", 19, 3, 9, 10], ["Bhavana Konasagar", 18, 17, 15, 16], ["Chandrakanth Bhangigoudar", 2, 13, 8, 4], ["Dharshini R", 5, 12, 6, 15], ["Gangireddy Lakshmi Pravallika", 14, 1, 6, 2], ["K Vishnu", 19, 12, 8, 3], ["Keerthika A", 18, 4, 9, 13], ["Koyena Basu", 11, 16, 8, 15], ["Mahinda Sivashanmugam", 5, 17, 9, 6], ["Mainak Ghosh", 5, 7, 9, 10], ["Malla Rahul", 18, 4, 8, 14], ["Monisha Jadav A.S", 2, 17, 15, 6], ["Omganesh Omganesh", 11, 7, 15, 9], ["Prabanjan P", 19, 12, 8, 3], ["Prahalyaa J", 19, 16, 6, 5], ["Priyanka Sahu", 11, 10, 15, 13], ["Ragavi R", 2, 1, 9, 4], ["Rajalakshmi LTM", 14, 17, 6, 3], ["Ranjan A", 18, 1, 8, 9], ["Riya Rajbhar", 2, 16, 15, 13], ["Rubeka L", 14, 10, 8, 12], ["Shreesaran G K", 11, 7, 6, 12], ["Shubham Bandgar", 19, 7, 15, 16], ["Sindhu D V", 18, 13, 9, 5], ["Srinitha M", 19, 4, 8, 6], ["Sruthi B", 11, 3, 6, 14], ["Sruthi S", 2, 1, 15, 9], ["Suparna Shyam", 5, 17, 8, 10], ["Suvetha S", 18, 12, 15, 11], ["Swanandi Barad", 5, 3, 9, 19], ["Swathi S.A", 2, 4, 6, 13], ["Tharun Prakash", 14, 17, 8, 7], ["Utkarsh Gupta", 18, 1, 9, 10], ["Yoga Sree R", 11, 16, 8, 19], ["Abhishek Choudhary", 2, 17, 15, 12], ["Akash Bhandi", 18, 1, 6, 15], ["Akshayaa LTM", 5, 16, 6, 9], ["Anand Patil", 14, 13, 8, 5], ["Angadi Urmitha", 11, 4, 8, 3], ["Anushka Hiremath", 14, 7, 15, 6], ["Bava Dharani", 2, 10, 9, 1], ["Charan S", 18, 17, 15, 9], ["Darshan Kubasad", 19, 7, 6, 4], ["Deepan B C", 19, 12, 8, 18], ["Dhanushree S", 2, 13, 15, 14], ["Dhanyatha Venugopal", 11, 16, 8, 5], ["Elakiya NS", 14, 10, 6, 9], ["Ganeshraja R", 11, 3, 8, 16], ["Hariharan N", 2, 4, 9, 17], ["Harinisri Thirumoorthi", 18, 3, 6, 1], ["Isha Malu", 5, 12, 15, 13], ["Jeevitha S", 19, 7, 9, 5], ["Jovin Paul J", 11, 10, 15, 6], ["Kamalesh B", 2, 13, 8, 3], ["Kavya Sri S G", 19, 4, 9, 10], ["Koushiki Santra", 14, 17, 15, 18], ["Maheswari D", 14, 1, 8, 11], ["Mohamed Aasim G", 5, 16, 6, 19], ["Prakriti Mazumdar", 2, 12, 15, 8], ["Prasheetha R", 18, 7, 9, 13], ["Priyanka Routh", 2, 1, 6, 14], ["Priyanshu Shukla", 5, 17, 15, 18], ["Rasha Tamanna M", 11, 10, 9, 19], ["Sakthi Ragavan R", 5, 16, 6, 11], ["Samiksha Sri M S", 2, 12, 8, 3], ["Santhiya L", 14, 7, 15, 19], ["Shivraj Amin", 18, 4, 9, 19], ["Tanvi Kakad", 11, 16, 8, 4], ["Tejashree Joshi", 14, 17, 6, 15], ["Thutika Pravallika", 18, 12, 9, 3], ["Varsha M S", 2, 13, 6, 1], ["Yuthika S", 5, 10, 8, 7]];
 const AUTO_PLAN = {}; AUTO_PLAN_ROWS.forEach(r=>{ AUTO_PLAN[normKey(r[0])] = r.slice(1); });
 const TICKET_HACK = {}; Object.keys(HACK_TICKET).forEach(id=>{ TICKET_HACK[HACK_TICKET[id]] = id; });
-let AUTO_CFG = { enabled:false, fromDate:'', toDate:'' };
-async function loadAutoCfg(){
-  try{ const r = await rowGet('cfg:autoassign'); AUTO_CFG = r ? { enabled:!!r.enabled, fromDate:r.fromDate||'', toDate:r.toDate||'', updatedBy:r.updatedBy||'', updatedAt:r.updatedAt||0 } : { enabled:false, fromDate:'', toDate:'' }; }
-  catch(e){ console.error(e); }
-}
+/* Per-participant switch: rec.autoAssign = {enabled, fromDate, toDate, by, at}. */
+function inAutoPlan(rec){ return !!(rec && AUTO_PLAN[normKey(rec.name)]); }
+function autoState(rec){ const a = rec && rec.autoAssign; return a && a.enabled && a.fromDate && a.toDate ? a : null; }
 function autoAssignmentsFor(rec){
-  if(!AUTO_CFG.enabled || !AUTO_CFG.fromDate || !AUTO_CFG.toDate || !rec) return [];
+  const cfg = autoState(rec);
+  if(!cfg) return [];
   const plan = AUTO_PLAN[normKey(rec.name)];
   if(!plan) return [];
   return plan.map((t,i)=>({ slot:i+1, enabled:true, auto:true, ticket:t, level:TICKET_MASTER[t].lvl,
-    fromDate:AUTO_CFG.fromDate, toDate:AUTO_CFG.toDate, scenarioId:TICKET_HACK[t] || '', assignedBy:'Auto-assignment' }));
+    fromDate:cfg.fromDate, toDate:cfg.toDate, scenarioId:TICKET_HACK[t] || '', assignedBy:'Auto-assignment' }));
+}
+async function setParticipantAuto(key, enabled, from, to){
+  const rec = await Store.getParticipant(key);
+  if(!rec) return false;
+  const prev = rec.autoAssign || {};
+  rec.autoAssign = { enabled, fromDate: from ? hackFromStamp(from) : (prev.fromDate || null), toDate: to ? hackToStamp(to) : (prev.toDate || null),
+    by: session ? session.name : '', at: Date.now() };
+  return Store.putParticipant(key, rec);
 }
 function slotLevel(n){ return ['L1','L2','L3','L4'][n-1] || ''; }
 /* A participant can hold up to MAX_QUESTS Ticket Quests. Each one is its own
@@ -3825,12 +3847,21 @@ async function openHackathonConfig(key, rec){
   const asg = manualAssignments(rec);
   const host = document.getElementById('hackCfgSlots');
   host.innerHTML = '';
-  const auto = manualAssignments(rec).length ? [] : autoAssignmentsFor(rec);
-  if(auto.length){
-    const b = el('div','aa-warn');
-    b.innerHTML = '<b>Auto-assigned from the workbook:</b> ' + auto.map(a=>`Ticket ${a.ticket} (${a.level})`).join(', ') +
-      '. Saving any Ticket Quest below replaces this plan for this participant with what you enter.';
-    host.appendChild(b);
+  if(inAutoPlan(rec)){
+    const plan = AUTO_PLAN[normKey(rec.name)], st = rec.autoAssign || {};
+    const box = el('div','cfg-slot'); box.id = 'hackCfgAuto';
+    box.innerHTML = `
+      <div class="cs-head"><b>Workbook plan</b><span style="font-size:11.5px;color:var(--text-dim);">${plan.map(t=>`Ticket ${t} (${TICKET_MASTER[t].lvl})`).join(' · ')}</span></div>
+      <label class="chk-row"><input type="checkbox" id="autoCfgEn"><span>Give this participant their four workbook tickets</span></label>
+      <div class="cfg-grid">
+        <div class="field"><label>From date</label><input type="date" id="autoCfgFrom"></div>
+        <div class="field"><label>To date</label><input type="date" id="autoCfgTo"></div>
+      </div>
+      <div style="font-size:11.5px;color:var(--text-faint);line-height:1.5;">Ticket Quests you assign by hand in the blocks below take priority over this plan.</div>`;
+    host.appendChild(box);
+    box.querySelector('#autoCfgEn').checked = !!st.enabled;
+    box.querySelector('#autoCfgFrom').value = hackDatePart(st.fromDate);
+    box.querySelector('#autoCfgTo').value = hackDatePart(st.toDate);
   }
   for(let n = 1; n <= MAX_QUESTS; n++){
     const a = asg.find(q=> q.slot === n) || {};
@@ -3882,7 +3913,14 @@ async function saveHackathonConfig(){
   if(!hackCfgKey) return;
   const err = document.getElementById('hackCfgErr');
   const fail = m => { err.textContent = m; err.classList.add('show'); };
-  const boxes = [...document.querySelectorAll('#hackCfgSlots .cfg-slot')];
+  const boxes = [...document.querySelectorAll('#hackCfgSlots .cfg-slot')].filter(b=> b.dataset.slot);
+  const autoBox = document.getElementById('hackCfgAuto');
+  const autoOn = !!(autoBox && autoBox.querySelector('#autoCfgEn').checked);
+  const aFrom = autoBox ? autoBox.querySelector('#autoCfgFrom').value : '', aTo = autoBox ? autoBox.querySelector('#autoCfgTo').value : '';
+  if(autoOn){
+    if(!aFrom || !aTo) return fail('Workbook plan: set both a From date and a To date.');
+    if(new Date(hackFromStamp(aFrom)) > new Date(hackToStamp(aTo))) return fail('Workbook plan: the From date must be on or before the To date.');
+  }
   const wanted = [];
   for(const box of boxes){
     const n = +box.dataset.slot;
@@ -3925,19 +3963,24 @@ async function saveHackathonConfig(){
       assignedBy: same ? prev.assignedBy : (session ? session.name : ''), assignedAt: same ? prev.assignedAt : Date.now()});
   });
   rec.hackathons = next;
-  rec.hackathon = null;                                      // legacy single field migrated into slot 1
+  rec.hackathon = null;
+  if(autoBox){
+    const pv = rec.autoAssign || {};
+    rec.autoAssign = { enabled:autoOn, fromDate: aFrom ? hackFromStamp(aFrom) : (pv.fromDate || null), toDate: aTo ? hackToStamp(aTo) : (pv.toDate || null),
+      by: session ? session.name : '', at: Date.now() };
+  }                                      // legacy single field migrated into slot 1
   const ok = await Store.putParticipant(hackCfgKey, rec);
   btn.disabled = false; btn.textContent = 'Save';
   if(!ok) return fail('Could not save — check your connection and try again.');
 
   const count = next.filter(q=>q.enabled).length;
-  showToast(count ? `${count} Ticket Quest${count===1?'':'s'} assigned to ${rec.name}` : `Ticket Quest assignments cleared for ${rec.name}`);
+  showToast(count ? `${count} Ticket Quest${count===1?'':'s'} assigned to ${rec.name}` : (autoOn ? `Workbook plan on for ${rec.name}` : `Ticket Quest assignments cleared for ${rec.name}`));
   closeHackathonConfig();
   await refreshRoster();
 }
 
 async function removeHackathonConfig(){
-  document.querySelectorAll('#hackCfgSlots .cfg-slot:not(.locked) .cs-en').forEach(c=> c.checked = false);
+  document.querySelectorAll('#hackCfgSlots .cfg-slot[data-slot]:not(.locked) .cs-en').forEach(c=> c.checked = false);
   await saveHackathonConfig();
 }
 
@@ -4343,51 +4386,40 @@ document.getElementById('dlHackDetailBtn').addEventListener('click', downloadHac
    AUTO-ASSIGNMENT PANEL (employee only)
    ================================================================ */
 async function renderAutoPanel(){
-  const on = !!AUTO_CFG.enabled;
-  document.getElementById('aaState').textContent = on ? 'Enabled' : 'Disabled';
-  document.getElementById('aaState').className = 'aa-state ' + (on ? 'on' : 'off');
-  document.getElementById('aaFrom').value = AUTO_CFG.fromDate ? hackDatePart(AUTO_CFG.fromDate) : '';
-  document.getElementById('aaTo').value = AUTO_CFG.toDate ? hackDatePart(AUTO_CFG.toDate) : '';
-  document.getElementById('aaFrom').disabled = on; document.getElementById('aaTo').disabled = on;
-  const btn = document.getElementById('aaToggle');
-  btn.textContent = on ? 'Disable auto-assignment' : 'Enable auto-assignment';
-  btn.className = on ? 'btn danger' : 'btn primary';
-
   const people = await Store.listParticipants();
-  const byName = {}; Object.keys(people).forEach(k=>{ if(people[k]) byName[normKey(people[k].name)] = people[k]; });
-  const matched = AUTO_PLAN_ROWS.filter(r=> byName[normKey(r[0])]);
-  const manual = matched.filter(r=> manualAssignments(byName[normKey(r[0])]).length);
+  const byName = {}; Object.keys(people).forEach(k=>{ if(people[k]) byName[normKey(people[k].name)] = {k, rec:people[k]}; });
+  const found = AUTO_PLAN_ROWS.filter(r=> byName[normKey(r[0])]);
+  const on = found.filter(r=> autoState(byName[normKey(r[0])].rec));
+  const manual = found.filter(r=> manualAssignments(byName[normKey(r[0])].rec).length);
   const missing = AUTO_PLAN_ROWS.filter(r=> !byName[normKey(r[0])]);
   document.getElementById('aaSummary').innerHTML =
-    `<b>${AUTO_PLAN_ROWS.length}</b> participants in the plan · <b>${matched.length}</b> found in the roster` +
-    (manual.length ? ` · <b>${manual.length}</b> keep their hand-made assignments instead` : '') +
-    (missing.length ? ` · <b>${missing.length}</b> not in the roster yet (create their login by exactly this name: ${missing.slice(0,6).map(r=>escapeHtml(r[0])).join(', ')}${missing.length>6?', …':''})` : '') +
-    (on ? `<br>Window ${fmtHackDate(AUTO_CFG.fromDate)} to ${fmtHackDate(AUTO_CFG.toDate)}.` : '');
-  document.getElementById('aaPlan').innerHTML = `<table class="sp-table"><thead><tr><th>Participant</th><th>In roster</th><th>Ticket 1</th><th>Ticket 2</th><th>Ticket 3</th><th>Ticket 4</th></tr></thead><tbody>` +
-    AUTO_PLAN_ROWS.map(r=>`<tr><td>${escapeHtml(r[0])}</td><td>${byName[normKey(r[0])] ? (manualAssignments(byName[normKey(r[0])]).length ? 'manual' : '✓') : '—'}</td>` +
-      r.slice(1).map(t=>`<td>${t} · ${TICKET_MASTER[t].lvl} · ${TICKET_MASTER[t].pri}</td>`).join('') + '</tr>').join('') + '</tbody></table>';
+    `<b>${AUTO_PLAN_ROWS.length}</b> in the plan · <b>${found.length}</b> found in the roster · <b>${on.length}</b> switched on` +
+    (manual.length ? ` · <b>${manual.length}</b> have hand-made Ticket Quests, which take priority` : '') +
+    (missing.length ? `<br><b>${missing.length}</b> have no login yet — create it with exactly the workbook name: ${missing.slice(0,6).map(r=>escapeHtml(r[0])).join(', ')}${missing.length>6?', …':''}` : '');
+  document.getElementById('aaPlan').innerHTML = `<table class="sp-table"><thead><tr><th>Participant</th><th>In roster</th><th>Workbook plan</th><th>Ticket 1</th><th>Ticket 2</th><th>Ticket 3</th><th>Ticket 4</th></tr></thead><tbody>` +
+    AUTO_PLAN_ROWS.map(r=>{ const m = byName[normKey(r[0])]; const st = m ? autoState(m.rec) : null;
+      return `<tr><td>${escapeHtml(r[0])}</td><td>${m ? '✓' : '—'}</td><td>${st ? 'On · ' + fmtHackDate(st.fromDate) + ' to ' + fmtHackDate(st.toDate) : (m ? 'Off' : '—')}</td>` +
+      r.slice(1).map(t=>`<td>${t} · ${TICKET_MASTER[t].lvl} · ${TICKET_MASTER[t].pri}</td>`).join('') + '</tr>'; }).join('') + '</tbody></table>';
 }
-document.getElementById('aaToggle').addEventListener('click', async ()=>{
+async function bulkAuto(enable){
   const err = document.getElementById('aaErr'); err.classList.remove('show');
-  const btn = document.getElementById('aaToggle');
-  const turningOn = !AUTO_CFG.enabled;
-  let from = AUTO_CFG.fromDate, to = AUTO_CFG.toDate;
-  if(turningOn){
-    from = document.getElementById('aaFrom').value; to = document.getElementById('aaTo').value;
-    if(!from || !to){ err.textContent = 'Set both a From date and a To date before enabling.'; err.classList.add('show'); return; }
+  const from = document.getElementById('aaFrom').value, to = document.getElementById('aaTo').value;
+  if(enable){
+    if(!from || !to){ err.textContent = 'Set both a From date and a To date first.'; err.classList.add('show'); return; }
     if(new Date(hackFromStamp(from)) > new Date(hackToStamp(to))){ err.textContent = 'The From date must be on or before the To date.'; err.classList.add('show'); return; }
-    if(!confirm(`Enable auto-assignment?\n\nEvery participant in the workbook plan gets their four Ticket Quests (${from} to ${to}) and normal practice is locked for them while one is open.`)) return;
-  } else if(!confirm('Disable auto-assignment? Participants lose the Ticket Quests they have not submitted. Submissions already made are kept.')) return;
-  btn.disabled = true;
-  try{
-    await rowPut('cfg:autoassign', { enabled:turningOn, fromDate:turningOn ? hackFromStamp(from) : (AUTO_CFG.fromDate||null), toDate:turningOn ? hackToStamp(to) : (AUTO_CFG.toDate||null),
-      updatedBy: session ? session.name : '', updatedAt: Date.now() });
-    await loadAutoCfg();
-    showToast(turningOn ? 'Auto-assignment enabled' : 'Auto-assignment disabled');
-  }catch(e){ console.error(e); err.textContent = 'Could not save — check your connection and try again.'; err.classList.add('show'); }
-  btn.disabled = false;
+  }
+  const people = await Store.listParticipants();
+  const targets = Object.keys(people).filter(k=> people[k] && inAutoPlan(people[k]) && (enable || autoState(people[k])));
+  if(!targets.length){ showToast(enable ? 'Nobody in the plan has a login yet' : 'Nobody has the plan switched on'); return; }
+  if(!confirm(enable ? `Switch the workbook plan ON for ${targets.length} participant${targets.length===1?'':'s'} (${from} to ${to})?`
+                     : `Switch the workbook plan OFF for ${targets.length} participant${targets.length===1?'':'s'}? Submissions already made are kept.`)) return;
+  let ok = 0;
+  for(const k of targets){ if(await setParticipantAuto(k, enable, enable ? from : null, enable ? to : null)) ok++; }
+  showToast(`${enable ? 'Switched on' : 'Switched off'} for ${ok} of ${targets.length}`);
   await renderAutoPanel(); await refreshRoster();
-});
+}
+document.getElementById('aaEnableAll').addEventListener('click', ()=> bulkAuto(true));
+document.getElementById('aaDisableAll').addEventListener('click', ()=> bulkAuto(false));
 
 /* ================================================================
    SCENARIO LEVELS  (employee-managed; L1 · L2 · L3 · L4)

@@ -4289,7 +4289,10 @@ function questPriority(id){ const i = scenarioInfo('quest', id); return i ? i.pr
 async function loadLevels(){
   try{
     const r = await rowGet('cfg:levels');
-    LEVELS_CFG = r ? { practice:r.practice || {}, quest:r.quest || {} } : defaultLevels();
+    /* A saved row with nothing in it (e.g. Save pressed before any level was set) must not hide the
+       database levels, so it is treated the same as no row. */
+    const n = r ? Object.keys(r.practice || {}).length + Object.keys(r.quest || {}).length : 0;
+    LEVELS_CFG = n ? { practice:r.practice || {}, quest:r.quest || {} } : defaultLevels();
   }catch(e){ console.error(e); }
 }
 function levelOf(set, id){ const v = (LEVELS_CFG[set]||{})[id]; return LEVELS.includes(v) ? v : ''; }

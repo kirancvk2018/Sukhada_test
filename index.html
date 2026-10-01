@@ -787,7 +787,7 @@
       </div>
 
       <div class="card-panel" style="margin-bottom:22px;" id="levelsPanel">
-        <div class="section-title">Scenario Levels (L1 · L2 · L3 · L4)</div>
+        <div class="section-title">Scenario Levels (L1 · L2 · L3 · L4) <span style="text-transform:none; letter-spacing:0; color:var(--text-faint); font-weight:500;">· build 2026-10-02 b</span></div>
         <p style="font-size:12.5px; color:var(--text-dim); line-height:1.55; margin:0 0 12px;">
           Choose the level of every scenario, separately for <b>Practice</b> and <b>Ticket Quest</b>. Practice levels are shown to
           participants in the scenario list; Ticket Quest levels are only visible to employees (assignment list and downloads).
@@ -4291,8 +4291,16 @@ async function loadLevels(){
     const r = await rowGet('cfg:levels');
     /* A saved row with nothing in it (e.g. Save pressed before any level was set) must not hide the
        database levels, so it is treated the same as no row. */
-    const n = r ? Object.keys(r.practice || {}).length + Object.keys(r.quest || {}).length : 0;
-    LEVELS_CFG = n ? { practice:r.practice || {}, quest:r.quest || {} } : defaultLevels();
+    /* Database levels are the base. A saved level overrides it; a saved '-' means an employee
+       deliberately left that scenario Unassigned. Anything never saved keeps its database level. */
+    const merged = defaultLevels();
+    if(r) ['practice','quest'].forEach(set=>{
+      Object.keys(r[set] || {}).forEach(id=>{
+        const v = r[set][id];
+        if(v === '-') delete merged[set][id]; else if(LEVELS.includes(v)) merged[set][id] = v;
+      });
+    });
+    LEVELS_CFG = merged;
   }catch(e){ console.error(e); }
 }
 function levelOf(set, id){ const v = (LEVELS_CFG[set]||{})[id]; return LEVELS.includes(v) ? v : ''; }
@@ -4351,10 +4359,12 @@ function updateLevelsSummary(){
 async function saveLevels(){
   const btn = document.getElementById('lvlSaveBtn'), st = document.getElementById('lvlStatus');
   btn.disabled = true; st.textContent = 'Saving…';
-  const clean = set=>{ const o = {}; lvlList(set).forEach(x=>{ const v = lvlDraft[set][x.id]; if(LEVELS.includes(v)) o[x.id] = v; }); return o; };
+  const dflt = defaultLevels();
+  const clean = set=>{ const o = {}; lvlList(set).forEach(x=>{ const v = lvlDraft[set][x.id];
+    if(LEVELS.includes(v)) o[x.id] = v; else if(dflt[set][x.id]) o[x.id] = '-'; }); return o; };   // '-' = deliberately Unassigned
   try{
     await rowPut('cfg:levels', { practice:clean('practice'), quest:clean('quest'), updatedAt:new Date().toISOString() });
-    LEVELS_CFG = { practice:clean('practice'), quest:clean('quest') };
+    await loadLevels();
     st.textContent = 'Saved ✓'; showToast('Scenario levels saved');
     renderLevelsTable();
   }catch(e){ console.error(e); st.textContent = 'Could not save — check your connection'; showToast('Could not save levels'); }

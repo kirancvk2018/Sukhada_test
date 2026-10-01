@@ -1359,7 +1359,7 @@ const Store = {
     catch(e){ console.error(e); return false; }
   },
   async removeParticipant(key){
-    try{ await rowDelete(P_PREFIX + key); await rowDelete(A_PREFIX + key); await rowDelete(H_PREFIX + key); return true; }
+    try{ await rowDelete(P_PREFIX + key); await rowDelete(A_PREFIX + key); await rowDelete(H_PREFIX + key); await rowDelete('d:' + key); return true; }
     catch(e){ console.error(e); return false; }
   },
   async getAttempts(key){
@@ -1410,6 +1410,14 @@ const Store = {
       return row.starts[slot];
     }catch(e){ console.error(e); return null; }
   },
+  /* Draft of what a participant has placed so far, saved while the clock runs, so an expired Ticket Quest can still
+     be auto-submitted with their progress if they close the browser. Own row (d:<key>): cannot clash with h:<key>. */
+  async saveHackDraft(key, slot, response){
+    try{ const row = (await rowGet('d:' + key)) || {}; row[slot] = { response, ts:Date.now() }; await rowPut('d:' + key, row); return true; }
+    catch(e){ console.error(e); return false; }
+  },
+  async getHackDrafts(key){ try{ return (await rowGet('d:' + key)) || {}; }catch(e){ console.error(e); return {}; } },
+  async listAllHackDrafts(){ try{ return await rowList('d:'); }catch(e){ console.error(e); return {}; } },
   async listAllHackathonStarts(){
     try{
       const rows = await rowList(H_PREFIX);
@@ -1898,14 +1906,44 @@ function accuracyClass(pct){
   return 'acc-low';
 }
 
+/* A Ticket Quest whose clock has run out and was never submitted (the participant closed the browser) is submitted
+   here, from their last saved draft, the next time an employee opens the dashboard. Returns true if anything was added. */
+async function finalizeExpiredQuests(participants, hackByKey, startsByKey){
+  let changed = false;
+  const drafts = await Store.listAllHackDrafts();
+  for(const k of Object.keys(startsByKey || {})){
+    const p = participants[k]; if(!p) continue;
+    const atts = hackByKey[k] || [], asgs = hackAssignments(p);
+    for(const slotStr of Object.keys(startsByKey[k])){
+      const slot = +slotStr, start = startsByKey[k][slotStr];
+      if(attemptForSlot(atts, slot)) continue;
+      const a = asgs.find(x=> x.slot === slot), scenario = a ? findHackScenario(a.scenarioId) : null;
+      if(!scenario) continue;
+      const limit = questLimitMsForScenario(scenario.id);
+      if(Date.now() <= start + limit) continue;                       // still running
+      const dr = drafts[k] && drafts[k][slot] && drafts[k][slot].response;
+      const response = dr || [...scenario.pre.map((_,i)=>({kind:'pre',index:i})), ...scenario.resolve.map((_,i)=>({kind:'resolve',index:i})),
+        ...scenario.escalate.map((_,i)=>({kind:'escalate',index:i}))].map(r=>({...r, placedCardId:null}));
+      const score = calculateHackathonScore(scenario, response);
+      const att = { slot, startedAt:start, durationSec:Math.round(limit/1000), timeLimitMin:Math.round(limit/60000), level:qLevel({slot, a}),
+        priority:questPriority(scenario.id), timedOut:true, autoSubmittedBy:'dashboard', ts:start + limit, submittedAt:new Date(start + limit).toISOString(),
+        scenarioId:scenario.id, scenarioTitle:scenario.title, attemptNo:1, completed:true, response,
+        earned:score.earned, maximum:score.maximum, percentage:score.percentage, breakdown:score.breakdown, distractors:score.distractors };
+      if(await Store.appendHackathonAttempt(k, att)) changed = true;
+    }
+  }
+  return changed;
+}
+
 async function refreshRoster(){
   const wrap = document.getElementById('rosterWrap');
   const statRow = document.getElementById('employeeStatRow');
   wrap.innerHTML = '<div class="load-note">Loading roster…</div>';
   const participants = await Store.listParticipants();
   const attemptsByKey = await Store.listAllAttempts();
-  const hackByKey = await Store.listAllHackathonAttempts();
+  let hackByKey = await Store.listAllHackathonAttempts();
   const startsByKey = await Store.listAllHackathonStarts();
+  if(await finalizeExpiredQuests(participants, hackByKey, startsByKey)) hackByKey = await Store.listAllHackathonAttempts();
   const data = { participants, attempts: attemptsByKey, hack: hackByKey, starts: startsByKey };
   renderSpeedPanel(data);
   const nowTs = new Date();
@@ -2591,6 +2629,7 @@ function placeCardInSlot(cardId, slotEl){
   slotEl.classList.add('filled');
   slotEl.classList.remove('correct','incorrect');
   cardEl.classList.remove('dragging','selected');
+  hackDraftChanged();
 }
 function clearSlot(slotEl){
   slotEl.classList.remove('filled','correct','incorrect');
@@ -2602,6 +2641,7 @@ function returnCardToTray(cardEl){
   const tray = getTray();
   tray.appendChild(cardEl);
   refreshTrayEmptyState();
+  hackDraftChanged();
 }
 function refreshTrayEmptyState(){
   const tray = getTray();
@@ -3365,10 +3405,13 @@ const MAX_QUESTS = 4;
 /* The four slots ARE the four levels: slot 1 = L1, 2 = L2, 3 = L3, 4 = L4. A participant
    therefore gets at most one Ticket Quest per level, and the scenario for a slot must be
    one an employee tagged with that level (Scenario Levels panel). */
-/* Time allowed per Ticket Quest, by level (minutes). Change a number here to change the limit.
-   L1 10, L2 20 and L3 30 were requested; L4 was not specified — 40 is a placeholder. */
-const QUEST_MINUTES = {L1:10, L2:20, L3:30, L4:40};
-function questLimitMs(slot){ return (QUEST_MINUTES[slotLevel(slot)] || 30) * 60000; }
+/* Time allowed per Ticket Quest, set by the scenario's PRIORITY (minutes). Change a number here to change a limit.
+     P1 High priority    10 minutes
+     P2 Medium priority  20 minutes
+     P3 Low priority     30 minutes
+   A scenario with no priority falls back to 30. */
+const QUEST_MINUTES = {P1:10, P2:20, P3:30};
+function questLimitMsForScenario(id){ return (QUEST_MINUTES[questPriority(id)] || 30) * 60000; }
 /* ================================================================
    AUTO-ASSIGNMENT PLAN — from Ticket_Quest_Participant_Assignments_Balanced.xlsx,
    tab "Participant Assignments": [name, ticket, ticket, ticket, ticket].
@@ -3417,7 +3460,6 @@ function hackAssignments(rec){
 /* The level a Ticket Quest runs at: stored on auto assignments and submissions, else fixed by slot. */
 function qLevel(q){ return (q && q.att && q.att.level) || (q && q.a && q.a.level) || slotLevel(q && q.slot); }
 function qName(q){ return q && q.a && q.a.auto ? `Ticket Quest ${q.slot} · ${qLevel(q)}` : `${qLevel(q)} Ticket Quest`; }
-function questLimitMsLevel(level){ return (QUEST_MINUTES[level] || 30) * 60000; }
 function attemptSlot(a){ return (a && a.slot) || 1; }                    // pre-multi-quest attempts are slot 1
 function attemptForSlot(attempts, slot){ return (attempts || []).filter(a=> attemptSlot(a) === slot).slice(-1)[0] || null; }
 
@@ -3602,11 +3644,28 @@ async function enterHackathon(wantSlot){
   const startTs = row && row.starts ? row.starts[hackSlotNo] : null;
   if(!startTs){ showHackStartGate(); return; }
   buildHackathonBoard();
+  const drafts = await Store.getHackDrafts(session.key);
+  const dr = drafts[hackSlotNo] && drafts[hackSlotNo].response;
+  if(dr) dr.forEach(r=>{                                   // put back what they had placed (also shows progress after a refresh)
+    if(!r.placedCardId) return;
+    const sl = hackSlots.find(x=> x.kind === r.kind && x.index === r.index);
+    if(sl && document.querySelector(`#hackTray .card[data-card-id="${r.placedCardId}"]`)) placeCardInSlot(r.placedCardId, sl.el);
+  });
   runHackTimer(startTs);
 }
 
 /* ---- timer ---- */
-let hackTimerId = null, hackStartTs = 0, hackTimedOut = false;
+let hackTimerId = null, hackStartTs = 0, hackTimedOut = false, hackDraftTimer = null;
+function currentHackResponse(){
+  return hackSlots.map(s=>{ const c = s.el.querySelector('.card'); return {kind:s.kind, index:s.index, placedCardId: c ? c.dataset.cardId : null}; });
+}
+/* Called whenever a card moves on the Ticket Quest board; saves a draft shortly after the last move. */
+function hackDraftChanged(){
+  if(activeTrayId !== 'hackTray' || !session || session.role !== 'participant' || hackSubmitted || !hackStartTs || !hackSlots.length) return;
+  clearTimeout(hackDraftTimer);
+  const slot = hackSlotNo;
+  hackDraftTimer = setTimeout(()=>{ if(!hackSubmitted && slot === hackSlotNo) Store.saveHackDraft(session.key, slot, currentHackResponse()); }, 1500);
+}
 function clearHackTimer(){ if(hackTimerId){ clearInterval(hackTimerId); hackTimerId = null; } }
 function fmtClock(ms){
   const t = Math.max(0, Math.ceil(ms/1000)), m = Math.floor(t/60), sec = t%60;
@@ -3616,10 +3675,11 @@ function showHackStartGate(){
   document.getElementById('hackBoard').style.display = 'none';
   document.getElementById('hackDone').style.display = 'none';
   document.getElementById('hackStart').style.display = 'block';
-  const mins = questLimitMsLevel(hackLevel) / 60000;
-  document.getElementById('hackStartLevel').textContent = hackQName;
+  const mins = questLimitMsForScenario(hackCurrent.id) / 60000;
+  const pri = questPriority(hackCurrent.id);
+  document.getElementById('hackStartLevel').textContent = hackQName + (pri ? ` · ${pri}` : '');
   document.getElementById('hackStartMsg').innerHTML =
-    `You have <b>${mins} minutes</b> for this Ticket Quest. The clock starts when you press Start and keeps running even if you ` +
+    `${pri ? `This is a <b>${pri}</b> ticket, so you have ` : 'You have '}<b>${mins} minutes</b> for this Ticket Quest. The clock starts when you press Start and keeps running even if you ` +
     `refresh or log out. When it reaches zero, whatever you have placed is submitted automatically.`;
 }
 document.getElementById('hackStartBtn').addEventListener('click', async ()=>{
@@ -3635,8 +3695,8 @@ document.getElementById('hackStartBtn').addEventListener('click', async ()=>{
 function runHackTimer(startTs){
   clearHackTimer();
   hackStartTs = startTs; hackTimedOut = false;
-  document.getElementById('hackTimerLabel').textContent = hackQName;
-  const limit = questLimitMsLevel(hackLevel);
+  document.getElementById('hackTimerLabel').textContent = hackQName + (questPriority(hackCurrent.id) ? ' · ' + questPriority(hackCurrent.id) : '');
+  const limit = questLimitMsForScenario(hackCurrent.id);
   const tick = ()=>{
     const left = limit - (Date.now() - hackStartTs);
     const box = document.getElementById('hackTimer');
@@ -3748,7 +3808,7 @@ async function submitHackathonSolution(auto){
 
   hackSubmitted = true;
   submitted = true;
-  clearHackTimer();
+  clearHackTimer(); clearTimeout(hackDraftTimer);
   deselectCard();
   document.getElementById('hackSubmitBtn').disabled = true;
   document.querySelectorAll('#hackTray .card, #hackFlow .card').forEach(c=>{
@@ -3767,11 +3827,12 @@ async function submitHackathonSolution(auto){
   const attempt = {
     slot: hackSlotNo,
     startedAt: hackStartTs || null,
-    durationSec: hackStartTs ? Math.min(Math.round((Date.now() - hackStartTs)/1000), Math.round(questLimitMsLevel(hackLevel)/1000)) : null,
-    timeLimitMin: Math.round(questLimitMsLevel(hackLevel)/60000),
+    durationSec: hackStartTs ? Math.min(Math.round((Date.now() - hackStartTs)/1000), Math.round(questLimitMsForScenario(hackCurrent.id)/1000)) : null,
+    timeLimitMin: Math.round(questLimitMsForScenario(hackCurrent.id)/60000),
+    priority: questPriority(hackCurrent.id),
     level: hackLevel,
     timedOut: isAuto || hackTimedOut,
-    ts: Date.now(),
+    ts: (isAuto || hackTimedOut) && hackStartTs ? Math.min(Date.now(), hackStartTs + questLimitMsForScenario(hackCurrent.id)) : Date.now(),
     submittedAt: new Date().toISOString(),
     scenarioId: hackCurrent.id,
     scenarioTitle: hackCurrent.title,
@@ -4296,7 +4357,7 @@ function buildTimingRows(participants, hackByKey, startsByKey, mode){
       const startTs = a ? (a.startedAt || starts[slot] || null) : (starts[slot] || null);
       rows.push({key:k, p, slot, level:lv, a,
         scenario: a ? a.scenarioTitle : '', startTs, endTs: a ? a.ts : null,
-        secs: attemptSecs(a), limitMin: a ? a.timeLimitMin : Math.round(questLimitMsLevel(lv)/60000),
+        secs: attemptSecs(a), limitMin: a ? a.timeLimitMin : Math.round(questLimitMsForScenario((asgs.find(x=>x.slot===slot)||{}).scenarioId)/60000),
         pct: a ? a.percentage : null, earned: a ? a.earned : null, max: a ? a.maximum : null,
         timedOut: !!(a && a.timedOut), status: a ? (a.timedOut ? 'Timed out' : 'Completed') : 'In progress', rank:''});
     });

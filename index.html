@@ -682,6 +682,28 @@
     .intro-steps{grid-template-columns:1fr;}
     .board{grid-template-columns:1fr;}
   }
+
+  /* Ticket Quest: deactivate & reassign */
+  .qc-scope{font-size:12.5px; color:var(--text-dim); background:var(--panel-alt); border:1px solid var(--border); border-radius:8px; padding:9px 12px; margin:0 0 4px; display:flex; flex-wrap:wrap; gap:8px; align-items:center;}
+  .qc-block{border-top:1px solid var(--border-soft); padding-top:14px; margin-top:14px;}
+  .qc-h{font-family:var(--mono); font-size:12px; font-weight:700; margin-bottom:4px; color:var(--text);}
+  .qc-p{font-size:12.5px; color:var(--text-dim); line-height:1.55; margin:0 0 10px;}
+  .qc-lvls{display:flex; gap:14px; align-items:center; flex-wrap:wrap;}
+  .qc-lvls .chk-row{margin:0;}
+  .cfg-slot .cs-re-row{background:var(--amber-dim); border:1px dashed var(--amber); border-radius:7px; padding:7px 10px;}
+  .paused-note{color:var(--red); font-weight:600;}
+
+  /* PIN field with show/hide eye */
+  .pin-wrap{position:relative;}
+  .pin-wrap input{padding-right:44px;}
+  .pin-eye{position:absolute; top:50%; right:6px; transform:translateY(-50%); width:34px; height:34px; display:flex; align-items:center; justify-content:center;
+    background:transparent; border:0; border-radius:7px; cursor:pointer; color:var(--text-dim); padding:0;}
+  .pin-eye:hover{background:var(--panel-alt); color:var(--accent2);}
+  .pin-eye:focus-visible{outline:2px solid var(--accent); outline-offset:1px;}
+  .pin-eye svg{width:19px; height:19px; display:block;}
+  .pin-eye .ic-off{display:none;}
+  .pin-eye.shown .ic-on{display:none;}
+  .pin-eye.shown .ic-off{display:block;}
 </style>
 </head>
 <body>
@@ -720,7 +742,13 @@
             </div>
             <div class="field">
               <label for="pPin">PIN</label>
-              <input id="pPin" type="text" inputmode="numeric" autocomplete="off" placeholder="4-digit PIN">
+              <div class="pin-wrap">
+                <input id="pPin" type="password" inputmode="numeric" autocomplete="off" placeholder="4-digit PIN">
+                <button type="button" class="pin-eye" id="pPinEye" aria-label="Show PIN" aria-pressed="false" title="Show PIN">
+                  <svg class="ic-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>
+                  <svg class="ic-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 19c-7 0-11-7-11-7a19.8 19.8 0 0 1 5.06-5.94M9.9 4.24A10.9 10.9 0 0 1 12 4c7 0 11 7 11 7a19.7 19.7 0 0 1-3.17 4.19M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                </button>
+              </div>
             </div>
             <button class="btn primary login-submit" id="participantLoginBtn">Log In &amp; Start Practicing</button>
           </div>
@@ -812,8 +840,46 @@
           <div class="sp-scroll" id="aaPlan" style="margin-top:8px;"></div></details>
       </div>
 
+      <div class="card-panel" style="margin-bottom:22px;" id="questCtlPanel">
+        <div class="section-title">Ticket Quest — Deactivate &amp; Reassign</div>
+        <p class="qc-p">Choose who this applies to by <b>ticking participants in the roster below</b>. Tick nobody to apply it to <b>everyone</b>.
+          For a single participant you can also use the <i>Deactivate</i> / <i>Edit</i> buttons on their roster row.</p>
+        <div class="qc-scope" id="qcScope"></div>
+
+        <div class="qc-block">
+          <div class="qc-h">1 · Deactivate / reactivate Ticket Quest</div>
+          <p class="qc-p">Deactivating switches Ticket Quest off: the participant goes back to normal practice at their next login. Assignments, dates and
+            submitted results are all <b>kept</b>, so Reactivate puts everything back. (A quest that was already started keeps its clock running.)</p>
+          <div class="aa-row">
+            <button class="btn danger" id="qcDeactivate" type="button">Deactivate Ticket Quest</button>
+            <button class="btn" id="qcReactivate" type="button">Reactivate Ticket Quest</button>
+          </div>
+        </div>
+
+        <div class="qc-block">
+          <div class="qc-h">2 · Reassign Ticket Quest (reopen with a new window)</div>
+          <p class="qc-p">Gives each participant in scope a fresh window for the levels you tick, with a new clock, and reactivates them. Their scenarios stay the same
+            (to change a scenario, use <i>Edit</i> on the participant). Workbook-plan participants share one window across all four tickets.</p>
+          <div class="aa-row">
+            <div class="field"><label style="display:block;font-size:11px;color:var(--text-dim);margin-bottom:3px;">Levels</label>
+              <div class="qc-lvls">
+                <label class="chk-row"><input type="checkbox" class="qc-lvl" value="L1" checked><span>L1</span></label>
+                <label class="chk-row"><input type="checkbox" class="qc-lvl" value="L2" checked><span>L2</span></label>
+                <label class="chk-row"><input type="checkbox" class="qc-lvl" value="L3" checked><span>L3</span></label>
+                <label class="chk-row"><input type="checkbox" class="qc-lvl" value="L4" checked><span>L4</span></label>
+              </div></div>
+            <div class="field"><label style="display:block;font-size:11px;color:var(--text-dim);margin-bottom:3px;">New From date</label><input type="date" id="qcFrom"></div>
+            <div class="field"><label style="display:block;font-size:11px;color:var(--text-dim);margin-bottom:3px;">New To date</label><input type="date" id="qcTo"></div>
+          </div>
+          <label class="chk-row" style="margin-bottom:12px;"><input type="checkbox" id="qcRetake" checked>
+            <span>Let them retake — clear earlier submissions at these levels (old results are archived, not deleted)</span></label>
+          <div class="aa-row"><button class="btn primary" id="qcReassign" type="button">Reassign Ticket Quest</button><span id="qcStatus" style="font-size:12px;color:var(--text-dim);"></span></div>
+          <div class="err" id="qcErr"></div>
+        </div>
+      </div>
+
       <div class="card-panel" style="margin-bottom:22px;" id="levelsPanel">
-        <div class="section-title">Scenario Levels (L1 · L2 · L3 · L4) <span style="text-transform:none; letter-spacing:0; color:var(--text-faint); font-weight:500;">· build 2026-10-02 b</span></div>
+        <div class="section-title">Scenario Levels (L1 · L2 · L3 · L4) <span style="text-transform:none; letter-spacing:0; color:var(--text-faint); font-weight:500;">· build 2026-10-02 c</span></div>
         <p style="font-size:12.5px; color:var(--text-dim); line-height:1.55; margin:0 0 12px;">
           Choose the level of every scenario, separately for <b>Practice</b> and <b>Ticket Quest</b>. Practice levels are shown to
           participants in the scenario list; Ticket Quest levels are only visible to employees (assignment list and downloads).
@@ -1183,6 +1249,7 @@
         <button class="btn small" id="hackCfgClose">Close</button>
       </div>
 
+      <div class="cfg-note paused-note" id="hackCfgPausedNote" style="display:none;"></div>
       <div class="cfg-slots" id="hackCfgSlots"></div>
 
       <p class="cfg-note">Hand-made: one Ticket Quest per level (L1, L2, L3, L4) per participant, at most 4 in all. Each takes a scenario tagged with that level, and has its own dates. Each window runs from 00:00 on
@@ -1194,6 +1261,7 @@
 
       <div class="modal-actions">
         <button class="btn small danger" id="hackCfgRemove">Remove all assignments</button>
+        <button class="btn small" id="hackCfgPause" type="button">Deactivate Ticket Quest</button>
         <button class="btn primary" id="hackCfgSave">Save</button>
       </div>
     </div>
@@ -1436,6 +1504,29 @@ const Store = {
       return out;
     }catch(e){ console.error(e); return {}; }
   },
+  /* Reassign support. For the given slots: clears the saved start time (so the clock restarts) and the saved draft.
+     With opts.dropAttempts the submitted attempt is also removed from the live list and COPIED into row.archive, so the
+     participant can retake but the old result is never lost. Without it, slots that already have a submission are left alone.
+     Returns the number of submissions archived, or -1 on failure. */
+  async resetQuestSlots(key, slots, opts){
+    opts = opts || {};
+    try{
+      const row = (await rowGet(H_PREFIX + key)) || {};
+      const atts = row.attempts || [];
+      const slotOf = a => (a && a.slot) || 1;
+      const gone = opts.dropAttempts ? atts.filter(a=> slots.includes(slotOf(a))) : [];
+      const kept = atts.filter(a=> !gone.includes(a));
+      const clear = slots.filter(sl=> !kept.some(a=> slotOf(a) === sl));
+      row.attempts = kept;
+      row.starts = row.starts || {};
+      clear.forEach(sl=>{ delete row.starts[sl]; });
+      if(gone.length) row.archive = (row.archive || []).concat(gone.map(a=> Object.assign({}, a, {archivedAt:Date.now(), archivedBy:opts.by || '', archivedReason:'reassigned'})));
+      await rowPut(H_PREFIX + key, row);
+      const d = await rowGet('d:' + key);
+      if(d){ clear.forEach(sl=>{ delete d[sl]; }); await rowPut('d:' + key, d); }
+      return gone.length;
+    }catch(e){ console.error(e); return -1; }
+  },
   /* Re-reads before writing so a double submit (two tabs, or a refresh
      mid-write) cannot create a second attempt row. */
   async appendHackathonAttempt(key, attempt){
@@ -1651,6 +1742,7 @@ function doLogout(){
   document.getElementById('employeeError').classList.remove('show');
   document.getElementById('pName').value = '';
   document.getElementById('pPin').value = '';
+  setPinVisible(false);                         // next person starts with a hidden PIN again
   document.getElementById('eName').value = '';
   document.getElementById('eCode').value = '';
   showScreen('login');
@@ -1673,6 +1765,20 @@ document.getElementById('tabEmployeeBtn').addEventListener('click', ()=>{
 /* ---- participant login ---- */
 document.getElementById('participantLoginBtn').addEventListener('click', participantLogin);
 document.getElementById('pPin').addEventListener('keydown', e=>{ if(e.key==='Enter') participantLogin(); });
+/* PIN is masked by default; the eye button reveals it on demand. */
+function setPinVisible(show){
+  const inp = document.getElementById('pPin'), eye = document.getElementById('pPinEye');
+  inp.type = show ? 'text' : 'password';
+  eye.classList.toggle('shown', show);
+  eye.setAttribute('aria-pressed', show ? 'true' : 'false');
+  eye.setAttribute('aria-label', show ? 'Hide PIN' : 'Show PIN');
+  eye.title = show ? 'Hide PIN' : 'Show PIN';
+}
+document.getElementById('pPinEye').addEventListener('click', ()=>{
+  const inp = document.getElementById('pPin');
+  setPinVisible(inp.type === 'password');
+  inp.focus();
+});
 document.getElementById('pName').addEventListener('keydown', e=>{ if(e.key==='Enter') participantLogin(); });
 
 async function participantLogin(){
@@ -1967,6 +2073,9 @@ async function refreshRoster(){
   const hackDone   = allQ.reduce((n,q)=> n + q.filter(x=>x.state==='COMPLETED').length, 0);
   statRow.appendChild(el('div','stat-chip', `Participants with an active Ticket Quest <b>${hackActive}</b>`));
   statRow.appendChild(el('div','stat-chip', `Ticket Quests completed <b>${hackDone}</b>`));
+  statRow.appendChild(el('div','stat-chip', `Ticket Quest deactivated <b>${names.filter(k=> data.participants[k].questPaused).length}</b>`));
+  [...qSel].forEach(k=>{ if(!data.participants[k]) qSel.delete(k); });          // forget ticked people who were removed
+  renderQuestControls(data.participants);
 
   if(names.length === 0){
     wrap.innerHTML = '<div class="empty-note">No participants yet — create a login above to get started.</div>';
@@ -1975,7 +2084,7 @@ async function refreshRoster(){
 
   const table = el('table','roster');
   table.innerHTML = `<thead><tr>
-    <th>Name</th><th>PIN</th><th>Attempts</th><th>Solved</th><th>Accuracy</th><th>Last attempt</th><th>Ticket Quest</th><th></th>
+    <th class="sel-cell"><input type="checkbox" id="rosterSelAll" title="Tick all participants"></th><th>Name</th><th>PIN</th><th>Attempts</th><th>Solved</th><th>Accuracy</th><th>Last attempt</th><th>Ticket Quest</th><th></th>
   </tr></thead>`;
   const tbody = el('tbody');
   names.forEach(k=>{
@@ -1990,17 +2099,19 @@ async function refreshRoster(){
 
     const row = el('tr','roster-row');
     row.innerHTML = `
+      <td class="sel-cell"><input type="checkbox" class="q-sel" data-k="${escapeHtml(k)}"${qSel.has(k) ? ' checked' : ''} title="Tick to include in the Ticket Quest bulk actions"></td>
       <td class="name-cell">${escapeHtml(p.name)}${p.empId ? ` <span style="color:var(--text-faint);font-weight:400;">· ${escapeHtml(p.empId)}</span>` : ''}</td>
       <td class="pin-cell">${escapeHtml(p.pin)}</td>
       <td>${attempts}</td>
       <td>${solved}</td>
       <td class="${accuracyClass(acc)}">${acc===null ? '—' : acc+'%'}</td>
       <td>${last}</td>
-      <td class="hack-cell"><div class="hq-cell">${hQuests.length
+      <td class="hack-cell"><div class="hq-cell">${p.questPaused ? '<span><span class="hack-badge hb-exp">Deactivated</span></span>' : ''}${hQuests.length
           ? hQuests.map(q=> `<span>${q.a && q.a.auto ? q.slot + '·' : ''}${q.level}· ${hackBadge(q.state, q.att ? q.att.percentage : null)}</span>`).join('')
-          : hackBadge('NOT_ASSIGNED')}</div>
+          : (p.questPaused ? '' : hackBadge('NOT_ASSIGNED'))}</div>
         <button class="btn small ghost hack-cfg-btn" data-cfg="${escapeHtml(k)}">${hQuests.length ? 'Edit' : 'Assign'}</button>
-        ${inAutoPlan(p) ? `<button class="btn small ${autoState(p) ? 'danger' : ''} hack-plan-btn" data-plan="${escapeHtml(k)}" title="Workbook plan: ${AUTO_PLAN[normKey(p.name)].map(t=>'T'+t).join(', ')}">Plan: ${autoState(p) ? 'On · turn off' : 'Off · turn on'}</button>` : ''}</td>
+        ${inAutoPlan(p) ? `<button class="btn small ${autoState(p) ? 'danger' : ''} hack-plan-btn" data-plan="${escapeHtml(k)}" title="Workbook plan: ${AUTO_PLAN[normKey(p.name)].map(t=>'T'+t).join(', ')}">Plan: ${autoState(p) ? 'On · turn off' : 'Off · turn on'}</button>` : ''}
+        ${(p.questPaused || hackAssignmentsRaw(p).length) ? `<button class="btn small ${p.questPaused ? '' : 'danger'} hack-pause-btn" data-pause="${escapeHtml(k)}" title="${p.questPaused ? 'Put Ticket Quest back on for this participant' : 'Switch Ticket Quest off for this participant (nothing is deleted)'}">${p.questPaused ? 'Reactivate' : 'Deactivate'}</button>` : ''}</td>
       <td class="row-actions"><button class="btn small danger" data-del="${escapeHtml(k)}">Remove</button></td>
     `;
     tbody.appendChild(row);
@@ -2008,7 +2119,7 @@ async function refreshRoster(){
     const detail = el('tr','detail-row');
     detail.style.display = 'none';
     const detailCell = el('td');
-    detailCell.colSpan = 8;
+    detailCell.colSpan = 9;
     const inner = el('div','detail-inner');
     /* Normal practice attempts and Ticket Quest results are shown in clearly
        separated blocks so the two are never conflated. */
@@ -2041,7 +2152,7 @@ async function refreshRoster(){
     tbody.appendChild(detail);
 
     row.addEventListener('click', (e)=>{
-      if(e.target.closest('button')) return;
+      if(e.target.closest('button, input, label')) return;
       detail.style.display = detail.style.display === 'none' ? 'table-row' : 'none';
     });
   });
@@ -2073,6 +2184,31 @@ async function refreshRoster(){
       await refreshRoster(); renderAutoPanel();
     });
   });
+
+  wrap.querySelectorAll('[data-pause]').forEach(btn=>{
+    btn.addEventListener('click', async (e)=>{
+      e.stopPropagation();
+      const key = btn.getAttribute('data-pause'), rec = data.participants[key], to = !rec.questPaused;
+      if(to && !confirm(`Deactivate Ticket Quest for ${rec.name}? They go back to normal practice. Assignments and submitted results are kept; you can reactivate any time.`)) return;
+      if(!(await togglePaused(key, to))){ showToast('Could not save — check your connection'); return; }
+      showToast(`Ticket Quest ${to ? 'deactivated' : 'reactivated'} for ${rec.name}`);
+      await refreshRoster();
+    });
+  });
+  wrap.querySelectorAll('.q-sel').forEach(cb=> cb.addEventListener('change', ()=>{
+    const k = cb.getAttribute('data-k'); if(cb.checked) qSel.add(k); else qSel.delete(k);
+    const sa = wrap.querySelector('#rosterSelAll'); if(sa) sa.checked = names.every(x=> qSel.has(x));
+    renderQuestControls(data.participants);
+  }));
+  const selAll = wrap.querySelector('#rosterSelAll');
+  if(selAll){
+    selAll.checked = names.every(x=> qSel.has(x));
+    selAll.addEventListener('change', ()=>{
+      names.forEach(x=>{ if(selAll.checked) qSel.add(x); else qSel.delete(x); });
+      wrap.querySelectorAll('.q-sel').forEach(c=> c.checked = selAll.checked);
+      renderQuestControls(data.participants);
+    });
+  }
 
   wrap.querySelectorAll('[data-del]').forEach(btn=>{
     btn.addEventListener('click', async (e)=>{
@@ -3455,9 +3591,17 @@ function manualAssignments(rec){
   return [];
 }
 /* Hand-made assignments win; otherwise the workbook plan applies while auto-assignment is enabled. */
-function hackAssignments(rec){
+function hackAssignmentsRaw(rec){
   const m = manualAssignments(rec);
   return m.length ? m : autoAssignmentsFor(rec);
+}
+/* rec.questPaused = {at, by} switches Ticket Quest off for that participant without deleting anything:
+   assignments stay stored, submissions stay visible (they are derived from attempts), and clearing the flag restores it all.
+   Everything that decides "does this person have a live Ticket Quest" goes through here. Code that must keep the stored
+   assignments intact (the edit modal) uses hackAssignmentsRaw. */
+function questsPaused(rec){ return !!(rec && rec.questPaused); }
+function hackAssignments(rec){
+  return questsPaused(rec) ? [] : hackAssignmentsRaw(rec);
 }
 /* The level a Ticket Quest runs at: stored on auto assignments and submissions, else fixed by slot. */
 function qLevel(q){ return (q && q.att && q.att.level) || (q && q.a && q.a.level) || slotLevel(q && q.slot); }
@@ -3481,8 +3625,8 @@ function getQuestState(a, att, now){
   return 'ACTIVE';
 }
 /* All slots that matter for a participant: assigned ones plus any with a submission. */
-function hackQuestList(rec, attempts, now){
-  const asg = hackAssignments(rec);
+function hackQuestList(rec, attempts, now, ignorePause){
+  const asg = ignorePause ? hackAssignmentsRaw(rec) : hackAssignments(rec);   // exports ignore the pause so deactivated people still list their quests
   const slots = new Set(asg.map(a=>a.slot));
   (attempts || []).forEach(x=> slots.add(attemptSlot(x)));
   return [...slots].sort((x,y)=>x-y).map(slot=>{
@@ -3945,6 +4089,7 @@ async function openHackathonConfig(key, rec){
     box.dataset.slot = n;
     box.innerHTML = `
       <div class="cs-head"><b>${slotLevel(n)} Ticket Quest</b>${att ? '<span class="hack-badge hb-done">Submitted · locked</span>' : ''}</div>
+      ${att ? `<label class="chk-row cs-re-row"><input type="checkbox" class="cs-re"><span><b>Reassign</b> — archive the submitted result and let them retake (pick the scenario and new dates below)</span></label>` : ''}
       <label class="chk-row"><input type="checkbox" class="cs-en"><span>Enable ${slotLevel(n)} Ticket Quest</span></label>
       <div class="cfg-grid">
         <div class="field"><label>From date</label><input type="date" class="cs-from"></div>
@@ -3971,10 +4116,26 @@ async function openHackathonConfig(key, rec){
     box.querySelector('.cs-from').value = hackDatePart(a.fromDate);
     box.querySelector('.cs-to').value   = hackDatePart(a.toDate);
     sel.value = a.scenarioId || (att ? att.scenarioId : '');
-    if(att) box.querySelectorAll('input,select').forEach(x=> x.disabled = true);
+    if(att){
+      box.querySelectorAll('input:not(.cs-re),select').forEach(x=> x.disabled = true);
+      const re = box.querySelector('.cs-re'), fromEl = box.querySelector('.cs-from'), toEl = box.querySelector('.cs-to');
+      const oldFrom = fromEl.value, oldTo = toEl.value;
+      re.addEventListener('change', ()=>{
+        box.classList.toggle('locked', !re.checked);                       // unlocked = treated like any editable level on Save
+        box.dataset.reassign = re.checked ? '1' : '';
+        box.querySelectorAll('input:not(.cs-re),select').forEach(x=> x.disabled = !re.checked);
+        fromEl.value = re.checked ? '' : oldFrom;                          // force a new window to be chosen
+        toEl.value   = re.checked ? '' : oldTo;
+      });
+    }
     host.appendChild(box);
   }
   document.getElementById('hackCfgErr').classList.remove('show');
+  const pb = document.getElementById('hackCfgPause'), pn = document.getElementById('hackCfgPausedNote');
+  pb.textContent = rec.questPaused ? 'Reactivate Ticket Quest' : 'Deactivate Ticket Quest';
+  pb.classList.toggle('danger', !rec.questPaused);
+  pn.style.display = rec.questPaused ? 'block' : 'none';
+  pn.textContent = rec.questPaused ? 'Ticket Quest is DEACTIVATED for this participant — they are on normal practice. Assignments below are kept. Reassigning a level and saving reactivates it.' : '';
   document.getElementById('hackCfgRemove').style.display = (asg.some(a=>a.enabled)) ? 'inline-block' : 'none';
   document.getElementById('hackCfgModal').classList.add('show');
 }
@@ -4005,7 +4166,7 @@ async function saveHackathonConfig(){
     const scenarioId = box.querySelector('.cs-scn').value;
     if(!from || !to)  return fail(`${slotLevel(n)} Ticket Quest: set both a From date and a To date.`);
     if(!scenarioId)   return fail(`${slotLevel(n)} Ticket Quest: choose an ${slotLevel(n)} scenario.`);
-    const prevA = hackAssignments(await Store.getParticipant(hackCfgKey) || {}).find(q=>q.slot===n);
+    const prevA = hackAssignmentsRaw(await Store.getParticipant(hackCfgKey) || {}).find(q=>q.slot===n);
     if(questLevel(scenarioId) !== slotLevel(n) && !(prevA && prevA.scenarioId === scenarioId))
       return fail(`${slotLevel(n)} Ticket Quest: only scenarios tagged ${slotLevel(n)} can be used here. Tag levels in the Scenario Levels panel.`);
     if(new Date(hackFromStamp(from)) > new Date(hackToStamp(to)))
@@ -4026,7 +4187,13 @@ async function saveHackathonConfig(){
     btn.disabled = false; btn.textContent = 'Save';
     return fail('That participant no longer exists — refresh the roster.');
   }
-  const old = hackAssignments(rec);          // includes the auto plan, so submitted ones are kept
+  const old = hackAssignmentsRaw(rec);       // includes the auto plan (and ignores the pause flag), so submitted ones are kept
+  const reSlots = boxes.filter(b=> b.dataset.reassign === '1').map(b=> +b.dataset.slot);
+  if(reSlots.length){                         // archive the old submission(s), restart the clock, and switch Ticket Quest back on
+    const n = await Store.resetQuestSlots(hackCfgKey, reSlots, {dropAttempts:true, by: session ? session.name : ''});
+    if(n < 0){ btn.disabled = false; btn.textContent = 'Save'; return fail('Could not archive the earlier submission — check your connection and try again.'); }
+    rec.questPaused = null;
+  }
   const next = [];
   boxes.forEach(box=>{
     const n = +box.dataset.slot;
@@ -4211,7 +4378,7 @@ document.getElementById('bulkCsvBtn').addEventListener('click', ()=>{
      Detail  — one row per expected step + one per distractor placed
    ================================================================ */
 const HACK_STATUS_LABEL = {NOT_ASSIGNED:'Not assigned', SCHEDULED:'Scheduled', ACTIVE:'Active (not submitted)',
-                           COMPLETED:'Completed', EXPIRED:'Expired (not submitted)'};
+                           COMPLETED:'Completed', EXPIRED:'Expired (not submitted)', PAUSED:'Deactivated (not submitted)'};
 const HACK_SECTION_LABEL = {pre:'Pre-check', resolve:'Resolve', escalate:'Escalate'};
 
 function csvCell(v){
@@ -4257,10 +4424,10 @@ async function loadHackExportData(){
   const rows = [];
   keys.forEach(k=>{
     const p = participants[k], attempts = hack[k] || [];
-    const qs = hackQuestList(p, attempts, now);
+    const qs = hackQuestList(p, attempts, now, true);
     if(!qs.length) rows.push({key:k, p, slot:'', level:'', a:null, last:null, attempts:[], state:'NOT_ASSIGNED'});
     qs.forEach(q=> rows.push({key:k, p, slot:q.slot, level:q.level, a:q.a, last:q.att,
-      attempts: attempts.filter(x=> attemptSlot(x) === q.slot), state:q.state}));
+      attempts: attempts.filter(x=> attemptSlot(x) === q.slot), state:(p.questPaused && q.state !== 'COMPLETED') ? 'PAUSED' : q.state}));
   });
   return rows;
 }
@@ -4497,6 +4664,113 @@ document.getElementById('aaEnableAll').addEventListener('click', ()=> bulkAuto(t
 document.getElementById('aaDisableAll').addEventListener('click', ()=> bulkAuto(false));
 
 /* ================================================================
+   TICKET QUEST — DEACTIVATE & REASSIGN  (employee only)
+   ----------------------------------------------------------------
+   Scope = the participants ticked in the roster (qSel), or everyone when nothing is ticked.
+   Deactivate  : sets rec.questPaused. Reversible, deletes nothing.
+   Reassign    : new window + fresh clock for the chosen levels, optional retake (old submission archived), and reactivates.
+   ================================================================ */
+const qSel = new Set();
+function qcScopeKeys(participants){
+  const all = Object.keys(participants).filter(k=> participants[k]);
+  return qSel.size ? all.filter(k=> qSel.has(k)) : all;
+}
+async function togglePaused(key, paused){
+  const rec = await Store.getParticipant(key);
+  if(!rec) return false;
+  rec.questPaused = paused ? { at:Date.now(), by: session ? session.name : '' } : null;
+  return Store.putParticipant(key, rec);
+}
+function renderQuestControls(participants){
+  const box = document.getElementById('qcScope'); if(!box) return;
+  const all = Object.keys(participants || {}).filter(k=> participants[k]);
+  const paused = all.filter(k=> participants[k].questPaused).length;
+  box.innerHTML = (qSel.size
+    ? `Applies to <b>${qSel.size}</b> ticked participant${qSel.size === 1 ? '' : 's'} <button class="btn small ghost" id="qcClearSel" type="button">Clear ticks</button>`
+    : `Applies to <b>everyone</b> (${all.length} participant${all.length === 1 ? '' : 's'}) — tick people in the roster to limit it`)
+    + ` <span>· currently deactivated: <b>${paused}</b></span>`;
+  const c = document.getElementById('qcClearSel');
+  if(c) c.onclick = ()=>{ qSel.clear(); document.querySelectorAll('.q-sel, #rosterSelAll').forEach(x=> x.checked = false); renderQuestControls(participants); };
+}
+async function bulkQuestPause(pause){
+  const st = document.getElementById('qcStatus');
+  const people = await Store.listParticipants();
+  const keys = qcScopeKeys(people).filter(k=> pause ? (!people[k].questPaused && hackAssignmentsRaw(people[k]).length) : !!people[k].questPaused);
+  if(!keys.length){ showToast(pause ? 'Nobody in scope has a live Ticket Quest to deactivate' : 'Nobody in scope is deactivated'); return; }
+  const who = `${keys.length} participant${keys.length === 1 ? '' : 's'}${qSel.size ? ' (ticked)' : ''}`;
+  if(!confirm(pause
+    ? `Deactivate Ticket Quest for ${who}?\n\nThey go back to normal practice. Assignments and submitted results are kept, and you can reactivate any time. A quest that was already started keeps its clock running.`
+    : `Reactivate Ticket Quest for ${who}?\n\nTheir assignments become live again within their dates.`)) return;
+  let ok = 0;
+  for(let i = 0; i < keys.length; i++){
+    st.textContent = `${pause ? 'Deactivating' : 'Reactivating'} ${i + 1} of ${keys.length}…`;
+    if(await togglePaused(keys[i], pause)) ok++;
+  }
+  st.textContent = '';
+  showToast(`Ticket Quest ${pause ? 'deactivated' : 'reactivated'} for ${ok} of ${keys.length}`);
+  await refreshRoster(); renderAutoPanel();
+}
+async function bulkQuestReassign(){
+  const err = document.getElementById('qcErr'), st = document.getElementById('qcStatus'), btn = document.getElementById('qcReassign');
+  err.classList.remove('show');
+  const fail = m=>{ err.textContent = m; err.classList.add('show'); };
+  const levels = [...document.querySelectorAll('.qc-lvl:checked')].map(x=> x.value);
+  const from = document.getElementById('qcFrom').value, to = document.getElementById('qcTo').value;
+  const retake = document.getElementById('qcRetake').checked;
+  if(!levels.length) return fail('Tick at least one level.');
+  if(!from || !to) return fail('Set both a New From date and a New To date.');
+  if(new Date(hackFromStamp(from)) > new Date(hackToStamp(to))) return fail('The From date must be on or before the To date.');
+  if(new Date(hackToStamp(to)) < new Date()) return fail('The To date is already in the past — participants would never see the Ticket Quest.');
+
+  btn.disabled = true; st.textContent = 'Reading roster…';
+  try{
+    const people = await Store.listParticipants();
+    const hack = await Store.listAllHackathonAttempts();
+    const jobs = []; let skipped = 0, quests = 0, clearing = 0;
+    qcScopeKeys(people).forEach(k=>{
+      const rec = people[k], atts = hack[k] || [];
+      const target = hackAssignmentsRaw(rec).filter(a=> a.scenarioId && levels.includes(qLevel({slot:a.slot, a, att:attemptForSlot(atts, a.slot)})));
+      if(!target.length){ skipped++; return; }
+      quests += target.length;
+      if(retake) clearing += target.filter(a=> attemptForSlot(atts, a.slot)).length;
+      jobs.push({k, target});
+    });
+    if(!jobs.length){ st.textContent = ''; return fail('Nobody in scope has a Ticket Quest at the chosen level(s). Assign one first (Assign / Edit on the roster, or the workbook plan).'); }
+    const msg = `Reassign ${quests} Ticket Quest${quests === 1 ? '' : 's'} (${levels.join(', ')}) for ${jobs.length} participant${jobs.length === 1 ? '' : 's'}?\n\n` +
+      `• New window: ${from} to ${to}\n• Everyone gets a fresh clock and Ticket Quest is switched back on\n` +
+      (retake ? `• ${clearing} earlier submission${clearing === 1 ? '' : 's'} will be archived so the quest can be retaken\n` : `• Earlier submissions are kept (those levels stay completed)\n`) +
+      (skipped ? `• ${skipped} participant${skipped === 1 ? '' : 's'} in scope have nothing at these levels and are left alone\n` : '');
+    if(!confirm(msg)){ st.textContent = ''; return; }
+
+    const nf = hackFromStamp(from), nt = hackToStamp(to), who = session ? session.name : '';
+    let done = 0, failed = 0;
+    for(const job of jobs){
+      st.textContent = `Reassigning ${done + failed + 1} of ${jobs.length}…`;
+      const slots = job.target.map(a=> a.slot);
+      if(await Store.resetQuestSlots(job.k, slots, {dropAttempts:retake, by:who}) < 0){ failed++; continue; }
+      const rec = await Store.getParticipant(job.k);
+      if(!rec){ failed++; continue; }
+      const man = manualAssignments(rec);
+      if(man.length){
+        rec.hackathons = man.map(a=> slots.includes(a.slot) ? Object.assign({}, a, {enabled:true, fromDate:nf, toDate:nt, assignedBy:who, assignedAt:Date.now()}) : a);
+        rec.hackathon = null;
+      } else {
+        rec.autoAssign = { enabled:true, fromDate:nf, toDate:nt, by:who, at:Date.now() };
+      }
+      rec.questPaused = null;
+      if(await Store.putParticipant(job.k, rec)) done++; else failed++;
+    }
+    st.textContent = '';
+    showToast(`Reassigned for ${done} participant${done === 1 ? '' : 's'}${failed ? `, ${failed} failed` : ''}`);
+    if(failed) fail(`${failed} participant${failed === 1 ? '' : 's'} could not be updated — check your connection and run it again.`);
+    await refreshRoster(); renderAutoPanel();
+  } finally { btn.disabled = false; }
+}
+document.getElementById('qcDeactivate').addEventListener('click', ()=> bulkQuestPause(true));
+document.getElementById('qcReactivate').addEventListener('click', ()=> bulkQuestPause(false));
+document.getElementById('qcReassign').addEventListener('click', bulkQuestReassign);
+
+/* ================================================================
    SCENARIO LEVELS  (employee-managed; L1 · L2 · L3 · L4)
    One shared row, cfg:levels = { practice:{<id>:'L1'..}, quest:{<id>:'L2'..} }.
    A scenario with no entry is "Unassigned". Levels are labels only — they
@@ -4618,6 +4892,17 @@ document.getElementById('lvlBulkApply').addEventListener('click', ()=>{
 document.getElementById('hackCfgClose').addEventListener('click', closeHackathonConfig);
 document.getElementById('hackCfgSave').addEventListener('click', saveHackathonConfig);
 document.getElementById('hackCfgRemove').addEventListener('click', removeHackathonConfig);
+document.getElementById('hackCfgPause').addEventListener('click', async ()=>{
+  if(!hackCfgKey) return;
+  const key = hackCfgKey, rec = await Store.getParticipant(key);
+  if(!rec) return;
+  const to = !rec.questPaused;
+  if(to && !confirm(`Deactivate Ticket Quest for ${rec.name}? They go back to normal practice. Assignments and submitted results are kept; you can reactivate any time.`)) return;
+  if(!(await togglePaused(key, to))){ showToast('Could not save — check your connection'); return; }
+  showToast(`Ticket Quest ${to ? 'deactivated' : 'reactivated'} for ${rec.name}`);
+  closeHackathonConfig();
+  await refreshRoster();
+});
 document.getElementById('hackCfgModal').addEventListener('click', e=>{
   if(e.target.id === 'hackCfgModal') closeHackathonConfig();
 });
